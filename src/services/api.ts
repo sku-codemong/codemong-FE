@@ -1525,9 +1525,17 @@ const realApi = {
   },
 
   archiveSubject: async (subjectId: string): Promise<Subject> => {
-    return apiRequest<Subject>(`/api/subjects/${subjectId}/archive`, {
-      method: 'PATCH'
+    const payload = await apiRequest<any>(`/api/subjects/${subjectId}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        archived: true
+      })
     });
+    const subject = extractEntity<Subject>(payload);
+    if (!subject) {
+      throw new Error('과목 보관에 실패했습니다.');
+    }
+    return subject;
   },
 
   getSessions: async (filters?: {

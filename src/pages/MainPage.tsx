@@ -52,7 +52,7 @@ export function MainPage({ userId }: MainPageProps) {
 
   const handleArchive = async (subjectId: string) => {
     try {
-      await api.updateSubject(subjectId, { archived: true });
+      await api.archiveSubject(subjectId);
       toast.success('과목이 보관되었습니다');
       loadData();
     } catch (error) {
