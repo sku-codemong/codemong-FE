@@ -63,7 +63,7 @@ export function ProfileEditPage() {
       await api.updateProfile({
         nickname: formData.nickname,
         grade: formData.grade,
-        gender: formData.gender,
+        // gender는 수정할 수 없으므로 제외
       });
 
       toast.success('프로필이 수정되었습니다');
@@ -156,32 +156,33 @@ export function ProfileEditPage() {
 
             <div>
               <label className="block text-[14px] text-neutral-950 mb-2">
-                성별 <span className="text-red-500">*</span>
+                성별
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  className={`h-[52px] rounded-[10px] border-2 transition-colors ${
+                  disabled
+                  className={`h-[52px] rounded-[10px] border-2 transition-colors cursor-not-allowed ${
                     formData.gender === 'male'
-                      ? 'border-[#9810fa] bg-purple-50 text-[#9810fa]'
-                      : 'border-gray-200 text-neutral-950 hover:border-gray-300'
+                      ? 'border-gray-300 bg-gray-100 text-gray-500'
+                      : 'border-gray-200 bg-gray-100 text-gray-400'
                   }`}
-                  onClick={() => setFormData({ ...formData, gender: 'male' })}
                 >
                   <span className="text-[16px]">남자</span>
                 </button>
                 <button
                   type="button"
-                  className={`h-[52px] rounded-[10px] border-2 transition-colors ${
+                  disabled
+                  className={`h-[52px] rounded-[10px] border-2 transition-colors cursor-not-allowed ${
                     formData.gender === 'female'
-                      ? 'border-[#9810fa] bg-purple-50 text-[#9810fa]'
-                      : 'border-gray-200 text-neutral-950 hover:border-gray-300'
+                      ? 'border-gray-300 bg-gray-100 text-gray-500'
+                      : 'border-gray-200 bg-gray-100 text-gray-400'
                   }`}
-                  onClick={() => setFormData({ ...formData, gender: 'female' })}
                 >
                   <span className="text-[16px]">여자</span>
                 </button>
               </div>
+              <p className="text-[12px] text-[#6a7282] mt-1">성별은 변경할 수 없습니다</p>
             </div>
 
             <div className="flex gap-3 pt-4">

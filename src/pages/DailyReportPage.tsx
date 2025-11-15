@@ -17,6 +17,8 @@ export function DailyReportPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | 'all'>('all');
 
   useEffect(() => {
     loadReport();
@@ -179,18 +181,74 @@ export function DailyReportPage() {
 
             {/* Sessions Card */}
             <div className="bg-white rounded-[16px] shadow-[0px_1px_3px_0px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)] p-[32px]">
-              <h2 className="text-[20px] text-neutral-950 mb-[24px]">학습 세션 기록</h2>
+              <div className="flex items-center justify-between mb-[24px]">
+                <h2 className="text-[20px] text-neutral-950">학습 세션 기록</h2>
+                
+                {/* 필터 및 정렬 */}
+                <div className="flex items-center gap-3">
+                  {/* 정렬 선택 */}
+                  <div className="flex items-center gap-2 bg-gray-100 rounded-[8px] p-1">
+                    <button
+                      onClick={() => setSortOrder('newest')}
+                      className={`px-3 py-1.5 text-[14px] rounded-[6px] transition-colors ${
+                        sortOrder === 'newest'
+                          ? 'bg-white text-neutral-950 shadow-sm'
+                          : 'text-[#6a7282] hover:text-neutral-950'
+                      }`}
+                    >
+                      최신순
+                    </button>
+                    <button
+                      onClick={() => setSortOrder('oldest')}
+                      className={`px-3 py-1.5 text-[14px] rounded-[6px] transition-colors ${
+                        sortOrder === 'oldest'
+                          ? 'bg-white text-neutral-950 shadow-sm'
+                          : 'text-[#6a7282] hover:text-neutral-950'
+                      }`}
+                    >
+                      과거순
+                    </button>
+                  </div>
+                  
+                  {/* 과목 선택 */}
+                  <select
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="px-3 py-1.5 text-[14px] border border-gray-300 rounded-[8px] bg-white text-neutral-950 focus:outline-none focus:ring-2 focus:ring-[#9810fa] focus:border-transparent"
+                  >
+                    <option value="all">전체 과목</option>
+                    {subjects.map(subject => (
+                      <option key={subject.id} value={String(subject.id)}>
+                        {subject.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               
-              {sessions.filter(s => s.status === 'completed' || s.status === 'stopped').length === 0 ? (
+              {(() => {
+                // 필터링 및 정렬된 세션
+                const filteredSessions = sessions
+                  .filter(s => (s.status === 'completed' || s.status === 'stopped') && s.endTime)
+                  .filter(s => {
+                    if (selectedSubjectId === 'all') return true;
+                    return String(s.subjectId) === selectedSubjectId;
+                  })
+                  .sort((a, b) => {
+                    const timeA = new Date(a.startTime).getTime();
+                    const timeB = new Date(b.startTime).getTime();
+                    return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
+                  });
+                
+                return filteredSessions.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
-                  이 날짜에는 학습 기록이 없습니다
+                  {selectedSubjectId === 'all' 
+                    ? '이 날짜에는 학습 기록이 없습니다'
+                    : '선택한 과목의 학습 기록이 없습니다'}
                 </p>
               ) : (
                 <div className="flex flex-col gap-[16px]">
-                  {sessions
-                    .filter(s => (s.status === 'completed' || s.status === 'stopped') && s.endTime)
-                    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                    .map((session, index) => {
+                  {filteredSessions.map((session, index) => {
                       // 과목 정보 찾기
                       const subjectInfo = subjects.find(s => String(s.id) === String(session.subjectId));
                       const subjectColor = subjectInfo?.color || '#3B82F6';
@@ -263,7 +321,8 @@ export function DailyReportPage() {
                       );
                     })}
                 </div>
-              )}
+              );
+              })()}
             </div>
           </>
         )}
