@@ -1,4 +1,4 @@
-import { Clock, Edit2, Minus } from 'lucide-react';
+import { Clock, Edit2, Minus, Plus } from 'lucide-react';
 import { Subject } from '../services/api';
 import { Link } from 'react-router-dom';
 
@@ -50,47 +50,53 @@ export function SubjectCard({ subject, dailyProgress = 0, userId, onArchive }: S
               onClick={() => onArchive(subject.id)}
               className="w-9 h-8 rounded-[8px] flex items-center justify-center hover:bg-gray-100 transition-colors"
             >
-              <Minus className="w-4 h-4 text-neutral-950" />
+              {subject.archived ? (
+                <Plus className="w-4 h-4 text-neutral-950" />
+              ) : (
+                <Minus className="w-4 h-4 text-neutral-950" />
+              )}
             </button>
           )}
         </div>
       </div>
       
-      {/* Progress Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-[14px]">
-          <span className="text-[#4a5565]">
-            {targetDaily > 0 ? '오늘 학습 목표' : '학습 시간'}
-          </span>
-          {targetDaily > 0 ? (
-            <span className="text-[#4a5565]">{dailyProgress}분 / {targetDaily}분</span>
-          ) : (
-            <span className="text-[#4a5565]">{dailyProgress}분</span>
-          )}
-        </div>
-        
-        {targetDaily > 0 && (
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-            <div 
-              className="h-full rounded-full transition-all"
-              style={{ 
-                backgroundColor: subject.color,
-                width: `${Math.min(progressPercentage, 100)}%`
-              }}
-            />
+      {/* Progress Section - 보관된 과목이 아닐 때만 표시 */}
+      {!subject.archived && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-[14px]">
+            <span className="text-[#4a5565]">
+              {targetDaily > 0 ? '오늘 학습 목표' : '학습 시간'}
+            </span>
+            {targetDaily > 0 ? (
+              <span className="text-[#4a5565]">{dailyProgress}분 / {targetDaily}분</span>
+            ) : (
+              <span className="text-[#4a5565]">{dailyProgress}분</span>
+            )}
           </div>
-        )}
-        
-        <Link to={`/subject/${userId}/${subject.id}`}>
-          <button 
-            className="w-full h-[36px] rounded-[8px] text-white text-[14px] flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: subject.color }}
-          >
-            <Clock className="w-4 h-4" />
-            학습 시작
-          </button>
-        </Link>
-      </div>
+          
+          {targetDaily > 0 && (
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div 
+                className="h-full rounded-full transition-all"
+                style={{ 
+                  backgroundColor: subject.color,
+                  width: `${Math.min(progressPercentage, 100)}%`
+                }}
+              />
+            </div>
+          )}
+          
+          <Link to={`/subject/${userId}/${subject.id}`}>
+            <button 
+              className="w-full h-[36px] rounded-[8px] text-white text-[14px] flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: subject.color }}
+            >
+              <Clock className="w-4 h-4" />
+              학습 시작
+            </button>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -264,7 +264,7 @@ export function SubjectEditPage() {
             <div>
               <label className="block text-[14px] text-neutral-950 mb-2">학점</label>
               <div className="flex gap-2">
-                {[1, 2, 3, 4].map(credit => (
+                {[1, 2, 3].map(credit => (
                   <button
                     key={credit}
                     type="button"
