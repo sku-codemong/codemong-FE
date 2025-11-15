@@ -11,7 +11,8 @@ interface MainPageProps {
 }
 
 export function MainPage({ userId }: MainPageProps) {
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
+  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
   const [dailyProgress, setDailyProgress] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [showAllocationDialog, setShowAllocationDialog] = useState(false);
@@ -19,14 +20,19 @@ export function MainPage({ userId }: MainPageProps) {
   const [allocating, setAllocating] = useState(false);
   const [recommending, setRecommending] = useState(false);
 
+  // activeTab에 따라 필터링된 과목들
+  const subjects = allSubjects.filter(subject => 
+    activeTab === 'active' ? !subject.archived : subject.archived
+  );
+
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
     try {
-      const subjectsData = await api.getSubjects(false);
-      setSubjects(subjectsData);
+      const subjectsData = await api.getSubjects(); // includeArchived=true로 모든 과목 가져오기
+      setAllSubjects(subjectsData);
 
       // 오늘 학습 시간 계산
       const today = new Date().toISOString().split('T')[0];
@@ -52,16 +58,19 @@ export function MainPage({ userId }: MainPageProps) {
 
   const handleArchive = async (subjectId: string) => {
     try {
-      await api.archiveSubject(subjectId);
-      toast.success('과목이 보관되었습니다');
+      // 현재 탭에 따라 archived 값 결정
+      const shouldArchive = activeTab === 'active';
+      await api.archiveSubject(subjectId, shouldArchive);
+      toast.success(shouldArchive ? '과목이 보관되었습니다' : '과목이 복원되었습니다');
       loadData();
     } catch (error) {
-      toast.error('보관에 실패했습니다');
+      toast.error(activeTab === 'active' ? '보관에 실패했습니다' : '복원에 실패했습니다');
     }
   };
 
   const handleGetRecommendation = async () => {
-    if (subjects.length === 0) {
+    const activeSubjects = allSubjects.filter(s => !s.archived);
+    if (activeSubjects.length === 0) {
       toast.error('먼저 과목을 추가해주세요');
       return;
     }
@@ -89,7 +98,8 @@ export function MainPage({ userId }: MainPageProps) {
       return;
     }
 
-    if (subjects.length === 0) {
+    const activeSubjects = allSubjects.filter(s => !s.archived);
+    if (activeSubjects.length === 0) {
       toast.error('먼저 과목을 추가해주세요');
       return;
     }
@@ -115,8 +125,8 @@ export function MainPage({ userId }: MainPageProps) {
         await Promise.all(updatePromises);
         
         // 4. 과목 데이터 다시 로드하여 업데이트된 targetDailyMin 반영
-        const updatedSubjects = await api.getSubjects(false);
-        setSubjects(updatedSubjects);
+        const updatedSubjects = await api.getSubjects();
+        setAllSubjects(updatedSubjects);
         
         toast.success(`총 ${availableMinutes}분이 ${allocation.subjects.length}개 과목에 분배되었습니다!`);
         setShowAllocationDialog(false);
@@ -134,7 +144,7 @@ export function MainPage({ userId }: MainPageProps) {
   const totalHours = Math.floor(totalMinutes / 60);
   const remainingMinutes = totalMinutes % 60;
 
-  const totalDailyTarget = subjects.reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
+  const totalDailyTarget = subjects.filter(s => !s.archived).reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
   const dailyTargetHours = Math.floor(totalDailyTarget / 60);
   const dailyTargetMinutes = totalDailyTarget % 60;
 
@@ -178,6 +188,30 @@ export function MainPage({ userId }: MainPageProps) {
                 </button>
               </Link>
             </div>
+          </div>
+          
+          {/* 탭 메뉴 */}
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`flex-1 rounded-[8px] h-[36px] text-[14px] font-medium transition-colors ${
+                activeTab === 'active'
+                  ? 'bg-[#9810fa] text-white'
+                  : 'bg-white border border-[rgba(0,0,0,0.1)] text-neutral-950 hover:bg-gray-50'
+              }`}
+            >
+              학습중인 과목
+            </button>
+            <button
+              onClick={() => setActiveTab('archived')}
+              className={`flex-1 rounded-[8px] h-[36px] text-[14px] font-medium transition-colors ${
+                activeTab === 'archived'
+                  ? 'bg-[#9810fa] text-white'
+                  : 'bg-white border border-[rgba(0,0,0,0.1)] text-neutral-950 hover:bg-gray-50'
+              }`}
+            >
+              보관된 과목
+            </button>
           </div>
         </div>
 
@@ -269,11 +303,11 @@ export function MainPage({ userId }: MainPageProps) {
               </div>
             </div>
 
-            {subjects.length > 0 && (
+            {allSubjects.filter(s => !s.archived).length > 0 && (
               <div className="bg-purple-50 rounded-[8px] p-3">
                 <p className="text-[12px] text-[#6a7282] mb-2">분배 대상 과목:</p>
                 <div className="flex flex-wrap gap-2">
-                  {subjects.map(subject => (
+                  {allSubjects.filter(s => !s.archived).map(subject => (
                     <span
                       key={subject.id}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-[6px] text-[12px] text-white"

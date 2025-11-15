@@ -1466,7 +1466,7 @@ const realApi = {
   },
 
   getSubjects: async (includeArchived = false): Promise<Subject[]> => {
-    const query = includeArchived ? '?includeArchived=true' : '';
+    const query = '?includeArchived=true';
     const payload = await apiRequest<any>(`/api/subjects${query}`);
     return extractArray<Subject>(payload);
   },
@@ -1524,16 +1524,16 @@ const realApi = {
     });
   },
 
-  archiveSubject: async (subjectId: string): Promise<Subject> => {
+  archiveSubject: async (subjectId: string, archived: boolean = true): Promise<Subject> => {
     const payload = await apiRequest<any>(`/api/subjects/${subjectId}/archive`, {
       method: 'PATCH',
       body: JSON.stringify({
-        archived: true
+        archived: archived
       })
     });
     const subject = extractEntity<Subject>(payload);
     if (!subject) {
-      throw new Error('과목 보관에 실패했습니다.');
+      throw new Error(archived ? '과목 보관에 실패했습니다.' : '과목 복원에 실패했습니다.');
     }
     return subject;
   },
