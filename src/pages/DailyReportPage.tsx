@@ -144,6 +144,9 @@ export function DailyReportPage() {
                       }}
                       locale={ko}
                       className="rounded-md border-0"
+                      classNames={{
+                        day_today: "!bg-[#9810fa] !text-white !rounded-full !font-semibold",
+                      }}
                     />
                   </PopoverContent>
                 </Popover>
