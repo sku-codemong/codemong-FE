@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, List, BookOpen } from 'lucide-react';
+import { ArrowLeft, Calendar as CalendarIcon, Clock, List, BookOpen } from 'lucide-react';
 import { api, DailyReport, Session, Subject } from '../services/api';
 import { Toaster, toast } from "sonner";
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar } from '../components/ui/calendar';
+import { format } from 'date-fns';
+import { ko } from 'date-fns/locale';
 
 export function DailyReportPage() {
   const navigate = useNavigate();
@@ -61,6 +65,41 @@ export function DailyReportPage() {
   const sessionCount = report?.subjects.reduce((sum, s) => sum + (s.minutes > 0 ? 1 : 0), 0) || 0;
   const subjectCount = report?.subjects.length || 0;
 
+  // 총 학습 시간을 초 단위로 계산 (세션 데이터에서 직접 계산)
+  const totalSeconds = sessions
+    .filter(s => s.status === 'completed' || s.status === 'stopped')
+    .reduce((sum, s) => {
+      let durationSec = 0;
+      if (s.endTime) {
+        const start = new Date(s.startTime).getTime();
+        const end = new Date(s.endTime).getTime();
+        durationSec = Math.floor((end - start) / 1000);
+      } else {
+        durationSec = (s.duration || 0) * 60;
+      }
+      return sum + durationSec;
+    }, 0);
+  const totalHours = Math.floor(totalSeconds / 3600);
+  const totalMins = Math.floor((totalSeconds % 3600) / 60);
+  const totalSecs = totalSeconds % 60;
+
+  // 각 과목별 초 단위 계산
+  const subjectSecondsMap = new Map<string, number>();
+  sessions
+    .filter(s => s.status === 'completed' || s.status === 'stopped')
+    .forEach(s => {
+      let durationSec = 0;
+      if (s.endTime) {
+        const start = new Date(s.startTime).getTime();
+        const end = new Date(s.endTime).getTime();
+        durationSec = Math.floor((end - start) / 1000);
+      } else {
+        durationSec = (s.duration || 0) * 60;
+      }
+      const current = subjectSecondsMap.get(s.subjectId) || 0;
+      subjectSecondsMap.set(s.subjectId, current + durationSec);
+    });
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-[848px] mx-auto">
@@ -86,7 +125,26 @@ export function DailyReportPage() {
                   <h1 className="text-[24px] text-neutral-950 mb-[8px]">일일 학습 리포트</h1>
                   <p className="text-[16px] text-[#4a5565]">{formatDate(selectedDate)}</p>
                 </div>
-                <Calendar className="w-[32px] h-[32px] text-[#9810fa]" strokeWidth={2.67} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="cursor-pointer hover:opacity-70 transition-opacity">
+                      <CalendarIcon className="w-[32px] h-[32px] text-[#9810fa]" strokeWidth={2.67} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-white border border-gray-200 shadow-lg" align="end">
+                    <Calendar
+                      mode="single"
+                      selected={new Date(selectedDate)}
+                      onSelect={(date) => {
+                        if (date) {
+                          setSelectedDate(format(date, 'yyyy-MM-dd'));
+                        }
+                      }}
+                      locale={ko}
+                      className="rounded-md border-0"
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Stats Grid */}
@@ -97,7 +155,7 @@ export function DailyReportPage() {
                     <span className="text-[16px] text-[#4a5565]">총 학습 시간</span>
                   </div>
                   <p className="text-[16px] text-neutral-950">
-                    {Math.floor(report.totalMinutes / 60)}시간 {report.totalMinutes % 60}분
+                    {totalHours > 0 ? `${totalHours}시간 ` : ''}{totalMins}분 {totalSecs}초
                   </p>
                 </div>
 
@@ -123,98 +181,87 @@ export function DailyReportPage() {
             <div className="bg-white rounded-[16px] shadow-[0px_1px_3px_0px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)] p-[32px]">
               <h2 className="text-[20px] text-neutral-950 mb-[24px]">학습 세션 기록</h2>
               
-              {report.subjects.length === 0 ? (
+              {sessions.filter(s => s.status === 'completed' || s.status === 'stopped').length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
                   이 날짜에는 학습 기록이 없습니다
                 </p>
               ) : (
                 <div className="flex flex-col gap-[16px]">
-                  {report.subjects.map((subject, index) => {
-                    if (subject.minutes === 0) return null;
-                    
-                    // 리포트 응답에 시작/종료 시간이 있으면 사용, 없으면 세션 데이터에서 찾기
-                    let startTime = '';
-                    let endTime = '';
-                    
-                    if (subject.startTime && subject.endTime) {
-                      // 리포트 응답에 시간 정보가 있으면 사용
-                      const start = new Date(subject.startTime);
-                      const end = new Date(subject.endTime);
-                      startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
-                      endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
-                    } else {
-                      // 리포트 응답에 시간 정보가 없으면 세션 데이터에서 찾기
-                      // subjectId를 문자열로 비교 (타입 불일치 방지)
-                      const subjectSessions = sessions.filter(s => {
-                        const matchesSubject = String(s.subjectId) === String(subject.subjectId);
-                        const isCompleted = s.status === 'completed' || s.status === 'stopped';
-                        return matchesSubject && isCompleted && s.endTime; // endTime이 있는 세션만
-                      });
+                  {sessions
+                    .filter(s => (s.status === 'completed' || s.status === 'stopped') && s.endTime)
+                    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                    .map((session, index) => {
+                      // 과목 정보 찾기
+                      const subjectInfo = subjects.find(s => String(s.id) === String(session.subjectId));
+                      const subjectColor = subjectInfo?.color || '#3B82F6';
+                      const subjectName = subjectInfo?.name || '알 수 없는 과목';
                       
-                      if (subjectSessions.length > 0) {
-                        // 시작 시간 기준으로 정렬
-                        const sortedSessions = [...subjectSessions].sort((a, b) => 
-                          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-                        );
-                        const firstSession = sortedSessions[0];
-                        const lastSession = sortedSessions[sortedSessions.length - 1];
-                        
-                        // 로컬 시간으로 변환
-                        const start = new Date(firstSession.startTime);
-                        const end = lastSession.endTime ? new Date(lastSession.endTime) : new Date(start.getTime() + subject.minutes * 60 * 1000);
-                        
-                        // 로컬 시간으로 포맷팅 (한국 시간대 고려)
-                        startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
-                        endTime = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+                      // 시작/종료 시간
+                      const start = new Date(session.startTime);
+                      const end = session.endTime ? new Date(session.endTime) : null;
+                      const startTime = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
+                      const endTime = end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '진행 중';
+                      
+                      // 세션 시간 계산 (초 단위)
+                      let durationSec = 0;
+                      if (end) {
+                        durationSec = Math.floor((end.getTime() - start.getTime()) / 1000);
                       } else {
-                        // 세션 데이터도 없으면 기본값 사용
-                        startTime = '09:00';
-                        const endHours = Math.floor(subject.minutes / 60);
-                        const endMins = subject.minutes % 60;
-                        endTime = `${String(9 + endHours).padStart(2, '0')}:${String(endMins).padStart(2, '0')}`;
+                        durationSec = (session.duration || 0) * 60;
                       }
-                    }
-                    
-                    const hours = Math.floor(subject.minutes / 60);
-                    const mins = subject.minutes % 60;
-                    
-                    return (
-                      <div key={index} className="border border-gray-200 rounded-[14px] p-[17px]">
-                        <div className="flex items-start gap-[16px]">
-                          {/* Color Icon */}
-                          <div
-                            className="w-[48px] h-[48px] rounded-full flex-shrink-0"
-                            style={{ backgroundColor: subject.color }}
-                          />
-                          
-                          {/* Content */}
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-[8px]">
-                              <div>
-                                <h3 className="text-[18px] text-neutral-950 mb-[3px]">
-                                  {subject.subjectName}
-                                </h3>
-                                <p className="text-[16px] text-[#6a7282]">
-                                  {startTime} - {endTime}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-[16px] text-neutral-950">{subject.minutes}분</p>
-                                <p className="text-[16px] text-[#6a7282]">{hours}시간 {mins}분</p>
-                              </div>
-                            </div>
+                      
+                      const hours = Math.floor(durationSec / 3600);
+                      const mins = Math.floor((durationSec % 3600) / 60);
+                      const secs = durationSec % 60;
+                      const minutes = Math.floor(durationSec / 60);
+                      
+                      return (
+                        <div key={session.id || index} className="border border-gray-200 rounded-[14px] p-[17px]">
+                          <div className="flex items-start gap-[16px]">
+                            {/* Color Icon */}
+                            <div
+                              className="w-[48px] h-[48px] rounded-full flex-shrink-0"
+                              style={{ backgroundColor: subjectColor }}
+                            />
                             
-                            {/* Note */}
-                            <div className="bg-gray-50 rounded-[10px] p-[12px]">
-                              <p className="text-[16px] text-[#4a5565]">
-                                📝 학습 내용 기록
-                              </p>
+                            {/* Content */}
+                            <div className="flex-1">
+                              <div className="flex items-start justify-between mb-[8px]">
+                                <div>
+                                  <h3 className="text-[18px] text-neutral-950 mb-[3px]">
+                                    {subjectName}
+                                  </h3>
+                                  <p className="text-[16px] text-[#6a7282]">
+                                    {startTime} - {endTime}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[16px] text-neutral-950">
+                                    {hours > 0 ? `${hours}시간 ` : ''}{mins}분 {secs}초
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {/* Note */}
+                              <div className="bg-gray-50 rounded-[10px] p-[12px]">
+                                <p className="text-[16px] text-[#4a5565]">
+                                  📝 학습 내용 기록
+                                </p>
+                                {session.note ? (
+                                  <p className="text-[14px] text-neutral-950 mt-[8px] whitespace-pre-wrap">
+                                    {session.note}
+                                  </p>
+                                ) : (
+                                  <p className="text-[14px] text-[#9ca3af] mt-[8px]">
+                                    기록된 내용이 없습니다
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               )}
             </div>

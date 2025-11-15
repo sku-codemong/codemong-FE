@@ -4,6 +4,9 @@ import { BarChart3 } from 'lucide-react';
 import { api, User } from '../services/api';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
@@ -117,67 +120,54 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[14px] border border-[rgba(0,0,0,0.1)] w-full max-w-[448px]">
-        <div className="px-[33px] py-[33px] flex flex-col gap-[56px]">
-          {/* Logo and Header */}
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative rounded-[16px] shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.1),0px_4px_6px_-4px_rgba(0,0,0,0.1)] size-[40px] bg-[#9810fa] flex items-center justify-center overflow-hidden">
-              <BarChart3 className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-[#9810fa] text-[16px]">Study Timer</h1>
-            <p className="text-[#6a7282] text-[14px] text-center">학습 시간을 체계적으로 관리하세요</p>
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+        <div className="flex items-center justify-center mb-8">
+          <div className="bg-[#9810fa] rounded-full p-3">
+            <BarChart3 className="size-8 text-white" />
           </div>
-
-          {/* Login Form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="email" className="text-[14px] text-neutral-950">
-                이메일
-              </label>
-              <input
-                id="email"
-                type="email"
-                placeholder="student@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-[#f3f3f5] rounded-[8px] px-3 py-2 text-[16px] text-neutral-950 placeholder:text-[#717182] border-0 focus:outline-none focus:ring-2 focus:ring-[#9810fa]"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label htmlFor="password" className="text-[14px] text-neutral-950">
-                비밀번호
-              </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-[#f3f3f5] rounded-[8px] px-3 py-2 text-[16px] text-neutral-950 placeholder:text-[#717182] border-0 focus:outline-none focus:ring-2 focus:ring-[#9810fa]"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-[#9810fa] hover:bg-[#8610da] text-white rounded-[8px] h-[36px] text-[14px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? '로그인 중...' : '로그인'}
-            </button>
-          </form>
-
-          <div className="flex flex-col gap-3">
-            <p className="text-center text-[14px] text-[#6a7282]">
-              Demo: 아무 이메일과 비밀번호로 로그인 가능
-            </p>
-            <p className="text-center text-[14px] text-[#6a7282]">
-              계정이 없으신가요?{' '}
-              <Link to="/signup" className="text-[#9810fa] hover:underline">
-                회원가입
-              </Link>
-            </p>
+        </div>
+        
+        <h1 className="text-center text-neutral-950 mb-2">Study Timer</h1>
+        <p className="text-center text-[#4a5565] mb-8">학습 목표를 달성하세요</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="email">이메일</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="이메일을 입력하세요"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1"
+            />
           </div>
+          
+          <div>
+            <Label htmlFor="password">비밀번호</Label>
+            <Input
+              id="password"
+              type="password"
+              placeholder="비밀번호를 입력하세요"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          
+          <Button 
+            type="submit" 
+            className="w-full bg-[#9810fa] hover:bg-[#7d0dd1] text-white"
+            disabled={loading}
+          >
+            {loading ? '로그인 중...' : '로그인'}
+          </Button>
+        </form>
+        
+        <div className="mt-6 text-center">
+          <Link to="/signup" className="text-[#9810fa] hover:underline">
+            계정이 없으신가요? 회원가입
+          </Link>
         </div>
       </div>
 

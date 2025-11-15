@@ -15,6 +15,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '../components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Label } from '../components/ui/label';
 
 const COLORS = [
   '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6',
@@ -37,6 +44,27 @@ export function SubjectEditPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showColorDialog, setShowColorDialog] = useState(false);
+
+  // 기본 색상 (파란색, 초록색, 노란색)
+  const defaultColors = [
+    { value: '#3B82F6', label: '파란색' },
+    { value: '#10B981', label: '초록색' },
+    { value: '#F59E0B', label: '노란색' },
+  ];
+
+  // 추가 색상 (보라색, 핑크색, 남색 등)
+  const additionalColors = [
+    { value: '#8B5CF6', label: '보라색' },
+    { value: '#EC4899', label: '핑크색' },
+    { value: '#6366F1', label: '남색' },
+    { value: '#14B8A6', label: '청록색' },
+    { value: '#F97316', label: '주황색' },
+    { value: '#EF4444', label: '빨간색' },
+    { value: '#84CC16', label: '라임색' },
+    { value: '#06B6D4', label: '하늘색' },
+    { value: '#F43F5E', label: '로즈색' },
+  ];
 
   useEffect(() => {
     loadSubject();
@@ -406,21 +434,94 @@ export function SubjectEditPage() {
 
             {/* 과목 색상 */}
             <div>
-              <label className="block text-[14px] text-neutral-950 mb-2">과목 색상</label>
-              <div className="flex gap-[8px] flex-wrap">
-                {COLORS.map(color => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`w-[32px] h-[32px] rounded-full transition-all ${
-                      formData.color === color ? 'ring-2 ring-offset-2 ring-[#99a1af]' : ''
+              <Label htmlFor="color">과목 색상</Label>
+              <div className="space-y-3 mt-2">
+                {/* 기본 색상 (파란색, 초록색, 노란색) */}
+                <div className="grid grid-cols-3 gap-3">
+                  {defaultColors.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, color: color.value })}
+                      className={`flex items-center gap-2 p-3 border-2 rounded-lg transition-colors ${
+                        formData.color === color.value
+                          ? 'border-[#9810fa] bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div 
+                        className={`size-6 rounded-full ${
+                          formData.color === color.value
+                            ? ''
+                            : 'border-2 border-dashed border-gray-400'
+                        }`}
+                        style={{ 
+                          backgroundColor: color.value
+                        }}
+                      />
+                      <span className="text-neutral-950">{color.label}</span>
+                    </button>
+                  ))}
+                </div>
+                
+                {/* 다른 색상 선택 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => setShowColorDialog(true)}
+                  className={`w-full flex items-center justify-center gap-2 p-3 border-2 rounded-lg transition-colors ${
+                    !defaultColors.find(c => c.value === formData.color)
+                      ? 'border-[#9810fa] bg-purple-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div 
+                    className={`size-6 rounded-full ${
+                      !defaultColors.find(c => c.value === formData.color)
+                        ? ''
+                        : 'border-2 border-dashed border-gray-400'
                     }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setFormData({ ...formData, color })}
+                    style={{ 
+                      backgroundColor: !defaultColors.find(c => c.value === formData.color) 
+                        ? formData.color 
+                        : 'transparent'
+                    }}
                   />
-                ))}
+                  <span className="text-neutral-950">다른 색상</span>
+                </button>
               </div>
             </div>
+
+            {/* 색상 선택 Dialog */}
+            <Dialog open={showColorDialog} onOpenChange={setShowColorDialog}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>색상 선택</DialogTitle>
+                </DialogHeader>
+                <div className="grid grid-cols-3 gap-3 py-4">
+                  {additionalColors.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...formData, color: color.value });
+                        setShowColorDialog(false);
+                      }}
+                      className={`flex items-center gap-2 p-3 border-2 rounded-lg transition-colors ${
+                        formData.color === color.value
+                          ? 'border-[#9810fa] bg-purple-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div 
+                        className="size-6 rounded-full" 
+                        style={{ backgroundColor: color.value }}
+                      />
+                      <span className="text-neutral-950">{color.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* Info Box */}
             <div className="bg-blue-50 rounded-[10px] border border-[#bedbff] p-[17px]">

@@ -14,6 +14,7 @@ export function MainPage({ userId }: MainPageProps) {
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
   const [dailyProgress, setDailyProgress] = useState<Map<string, number>>(new Map());
+  const [dailyProgressSeconds, setDailyProgressSeconds] = useState<Map<string, number>>(new Map()); // 초 단위 데이터
   const [loading, setLoading] = useState(true);
   const [showAllocationDialog, setShowAllocationDialog] = useState(false);
   const [availableMinutes, setAvailableMinutes] = useState(180); // 기본 3시간
@@ -34,21 +35,40 @@ export function MainPage({ userId }: MainPageProps) {
       const subjectsData = await api.getSubjects(); // includeArchived=true로 모든 과목 가져오기
       setAllSubjects(subjectsData);
 
-      // 오늘 학습 시간 계산
+      // 오늘 학습 시간 계산 (초 단위로 합산)
       const today = new Date().toISOString().split('T')[0];
       const sessions = await api.getSessions({
         date: today
       });
 
-      const progressMap = new Map<string, number>();
+      // 각 과목별로 초 단위로 합산 (초 단위 표시를 위해)
+      const progressSecondsMap = new Map<string, number>();
       sessions.forEach(session => {
-        if (session.status === 'completed') {
-          const current = progressMap.get(session.subjectId) || 0;
-          progressMap.set(session.subjectId, current + session.duration);
+        if (session.status === 'completed' || session.status === 'stopped') {
+          // endTime과 startTime의 차이를 초 단위로 계산
+          let durationSec = 0;
+          if (session.endTime) {
+            const start = new Date(session.startTime).getTime();
+            const end = new Date(session.endTime).getTime();
+            durationSec = Math.floor((end - start) / 1000);
+          } else {
+            // endTime이 없으면 duration을 초로 변환 (이미 분 단위이므로 * 60)
+            durationSec = (session.duration || 0) * 60;
+          }
+          
+          const current = progressSecondsMap.get(session.subjectId) || 0;
+          progressSecondsMap.set(session.subjectId, current + durationSec);
         }
+      });
+      
+      // 초 단위 합산을 분으로 변환 (SubjectCard에서는 분만 사용)
+      const progressMap = new Map<string, number>();
+      progressSecondsMap.forEach((totalSeconds, subjectId) => {
+        progressMap.set(subjectId, Math.floor(totalSeconds / 60));
       });
 
       setDailyProgress(progressMap);
+      setDailyProgressSeconds(progressSecondsMap); // 초 단위 데이터 저장
     } catch (error) {
       toast.error('데이터를 불러오는데 실패했습니다');
     } finally {
@@ -140,9 +160,11 @@ export function MainPage({ userId }: MainPageProps) {
     }
   };
 
-  const totalMinutes = Array.from(dailyProgress.values()).reduce((sum, val) => sum + val, 0);
-  const totalHours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
+  // 초 단위로 합산 후 시간, 분, 초로 변환
+  const totalSeconds = Array.from(dailyProgressSeconds.values()).reduce((sum, val) => sum + val, 0);
+  const totalHours = Math.floor(totalSeconds / 3600);
+  const remainingMinutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
 
   const totalDailyTarget = subjects.filter(s => !s.archived).reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
   const dailyTargetHours = Math.floor(totalDailyTarget / 60);
@@ -165,11 +187,11 @@ export function MainPage({ userId }: MainPageProps) {
             <div>
               <h1 className="text-[24px] text-neutral-950 mb-2">내 학습 현황</h1>
               <p className="text-[16px] text-[#4a5565]">
-                오늘 학습 시간: {totalHours}시간 {remainingMinutes}분
+                오늘 학습 시간: {totalHours > 0 ? `${totalHours}시간 ` : ''}{remainingMinutes}분 {remainingSeconds}초
               </p>
               {totalDailyTarget > 0 && (
                 <p className="text-[14px] text-[#6a7282] mt-1">
-                  오늘 목표: {dailyTargetHours}시간 {dailyTargetMinutes}분
+                  오늘 목표: {dailyTargetHours > 0 ? `${dailyTargetHours}시간 ` : ''}{dailyTargetMinutes}분
                 </p>
               )}
             </div>
@@ -233,6 +255,7 @@ export function MainPage({ userId }: MainPageProps) {
                 key={subject.id}
                 subject={subject}
                 dailyProgress={dailyProgress.get(subject.id) || 0}
+                dailyProgressSeconds={dailyProgressSeconds.get(subject.id) || 0}
                 userId={userId}
                 onArchive={handleArchive}
               />
@@ -241,22 +264,41 @@ export function MainPage({ userId }: MainPageProps) {
         )}
 
         {/* Quick Menu */}
-        <div className="bg-gradient-to-r from-[#faf5ff] to-[#eff6ff] rounded-[10px] p-6 mt-8">
-          <h2 className="text-[16px] text-neutral-950 mb-4">빠른 메뉴</h2>
-          <div className="flex flex-col gap-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-8">
+          <h2 className="text-neutral-950 mb-4">빠른 메뉴</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Link to={`/profile/${userId}`}>
-              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
-                📊 프로필 보기
+              <button className="flex items-center gap-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors w-full">
+                <div className="bg-[#9810fa] rounded-lg p-2">
+                  <svg className="size-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span className="text-neutral-950">프로필 보기</span>
               </button>
             </Link>
+            
             <Link to={`/reports/weekly/${userId}`}>
-              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
-                📈 주간 리포트
+              <button className="flex items-center gap-3 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors w-full">
+                <div className="bg-blue-600 rounded-lg p-2">
+                  <svg className="size-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span className="text-neutral-950">주간 리포트</span>
               </button>
             </Link>
+            
             <Link to={`/reports/daily/${userId}`}>
-              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
-                📅 일간 리포트
+              <button className="flex items-center gap-3 p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors w-full">
+                <div className="bg-emerald-600 rounded-lg p-2">
+                  <svg className="size-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <path d="M9 11l3 3L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <span className="text-neutral-950">일간 리포트</span>
               </button>
             </Link>
           </div>
