@@ -230,16 +230,30 @@ export function WeeklyReportPage() {
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0 bg-white border border-gray-200 shadow-lg" align="end">
                     <CalendarComponent
-                      mode="single"
-                      selected={new Date(weekStart + 'T00:00:00')}
-                      onSelect={(date) => {
-                        if (date) {
-                          const selectedMonday = getMonday(date);
+                      mode="range"
+                      selected={{
+                        from: new Date(weekStart + 'T00:00:00'),
+                        to: (() => {
+                          const monday = new Date(weekStart + 'T00:00:00');
+                          const sunday = new Date(monday);
+                          sunday.setDate(monday.getDate() + 6);
+                          return sunday;
+                        })(),
+                      }}
+                      onSelect={(range) => {
+                        if (range?.from) {
+                          const selectedMonday = getMonday(range.from);
                           setWeekStart(selectedMonday);
                         }
                       }}
                       locale={ko}
                       className="rounded-md border-0"
+                      classNames={{
+                        day_range_start: "!bg-[#9810fa] !text-white !rounded-l-full !rounded-r-none",
+                        day_range_end: "!bg-[#9810fa] !text-white !rounded-r-full !rounded-l-none",
+                        day_range_middle: "!bg-[#9810fa] !text-white !rounded-none",
+                        day_selected: "!bg-[#9810fa] !text-white",
+                      }}
                     />
                   </PopoverContent>
                 </Popover>
