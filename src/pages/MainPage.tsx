@@ -1,0 +1,314 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { SubjectCard } from '../components/SubjectCard';
+import { Plus, Sparkles } from 'lucide-react';
+import { api, Subject } from '../services/api';
+import { Toaster, toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+
+interface MainPageProps {
+  userId: string;
+}
+
+export function MainPage({ userId }: MainPageProps) {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [dailyProgress, setDailyProgress] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [showAllocationDialog, setShowAllocationDialog] = useState(false);
+  const [availableMinutes, setAvailableMinutes] = useState(180); // 기본 3시간
+  const [allocating, setAllocating] = useState(false);
+  const [recommending, setRecommending] = useState(false);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const subjectsData = await api.getSubjects(false);
+      setSubjects(subjectsData);
+
+      // 오늘 학습 시간 계산
+      const today = new Date().toISOString().split('T')[0];
+      const sessions = await api.getSessions({
+        date: today
+      });
+
+      const progressMap = new Map<string, number>();
+      sessions.forEach(session => {
+        if (session.status === 'completed') {
+          const current = progressMap.get(session.subjectId) || 0;
+          progressMap.set(session.subjectId, current + session.duration);
+        }
+      });
+
+      setDailyProgress(progressMap);
+    } catch (error) {
+      toast.error('데이터를 불러오는데 실패했습니다');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleArchive = async (subjectId: string) => {
+    try {
+      await api.updateSubject(subjectId, { archived: true });
+      toast.success('과목이 보관되었습니다');
+      loadData();
+    } catch (error) {
+      toast.error('보관에 실패했습니다');
+    }
+  };
+
+  const handleGetRecommendation = async () => {
+    if (subjects.length === 0) {
+      toast.error('먼저 과목을 추가해주세요');
+      return;
+    }
+
+    setRecommending(true);
+    
+    try {
+      // 오늘의 분배 추천 API 호출
+      const recommendation = await api.getTodayRecommendation();
+      
+      // 추천된 시간을 입력 필드에 설정
+      setAvailableMinutes(recommendation.totalAvailableMinutes);
+      
+      toast.success(`추천 시간: ${Math.floor(recommendation.totalAvailableMinutes / 60)}시간 ${recommendation.totalAvailableMinutes % 60}분`);
+    } catch (error: any) {
+      toast.error(error?.message || '추천을 불러오는데 실패했습니다');
+    } finally {
+      setRecommending(false);
+    }
+  };
+
+  const handleDailyAllocation = async () => {
+    if (availableMinutes < 30) {
+      toast.error('최소 30분 이상을 입력해주세요');
+      return;
+    }
+
+    if (subjects.length === 0) {
+      toast.error('먼저 과목을 추가해주세요');
+      return;
+    }
+
+    setAllocating(true);
+    
+    try {
+      // 1. 먼저 총 사용 가능한 시간을 설정
+      await api.updateDailyTarget(availableMinutes);
+      
+      // 2. 설정한 시간으로 일일 분배 추천 받기
+      const allocation = await api.getTodayRecommendation();
+      
+      if (allocation) {
+        // 3. 받은 분배 결과로 각 과목의 targetDailyMin 업데이트
+        const updatePromises = allocation.subjects.map(async (allocated) => {
+          const subjectId = Number(allocated.subjectId);
+          return api.updateSubject(subjectId.toString(), {
+            targetDailyMin: allocated.allocatedMinutes
+          });
+        });
+        
+        await Promise.all(updatePromises);
+        
+        // 4. 과목 데이터 다시 로드하여 업데이트된 targetDailyMin 반영
+        const updatedSubjects = await api.getSubjects(false);
+        setSubjects(updatedSubjects);
+        
+        toast.success(`총 ${availableMinutes}분이 ${allocation.subjects.length}개 과목에 분배되었습니다!`);
+        setShowAllocationDialog(false);
+      } else {
+        toast.error('일일 분배를 불러오는데 실패했습니다');
+      }
+    } catch (error) {
+      toast.error('시간 분배에 실패했습니다');
+    } finally {
+      setAllocating(false);
+    }
+  };
+
+  const totalMinutes = Array.from(dailyProgress.values()).reduce((sum, val) => sum + val, 0);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remainingMinutes = totalMinutes % 60;
+
+  const totalDailyTarget = subjects.reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
+  const dailyTargetHours = Math.floor(totalDailyTarget / 60);
+  const dailyTargetMinutes = totalDailyTarget % 60;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">로딩 중...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="max-w-[542px] mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h1 className="text-[24px] text-neutral-950 mb-2">내 학습 현황</h1>
+              <p className="text-[16px] text-[#4a5565]">
+                오늘 학습 시간: {totalHours}시간 {remainingMinutes}분
+              </p>
+              {totalDailyTarget > 0 && (
+                <p className="text-[14px] text-[#6a7282] mt-1">
+                  오늘 목표: {dailyTargetHours}시간 {dailyTargetMinutes}분
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowAllocationDialog(true)}
+                className="bg-white border-2 border-[#9810fa] text-[#9810fa] hover:bg-purple-50 rounded-[8px] px-4 h-[36px] text-[14px] flex items-center gap-2 transition-colors"
+              >
+                <Sparkles className="w-4 h-4" />
+                일일 분배
+              </button>
+              <Link to={`/subject/create/${userId}`}>
+                <button className="bg-[#9810fa] hover:bg-[#8610da] text-white rounded-[8px] px-4 h-[36px] text-[14px] flex items-center gap-2 transition-colors">
+                  <Plus className="w-4 h-4" />
+                  과목 추가
+                </button>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Subject Cards */}
+        {subjects.length === 0 ? (
+          <div className="bg-white rounded-[14px] border border-[rgba(0,0,0,0.1)] p-8 text-center">
+            <p className="text-[#6a7282] mb-4">등록된 과목이 없습니다</p>
+            <Link to={`/subject/create/${userId}`}>
+              <button className="bg-[#9810fa] hover:bg-[#8610da] text-white rounded-[8px] px-4 h-[36px] text-[14px] inline-flex items-center gap-2 transition-colors">
+                <Plus className="w-4 h-4" />
+                첫 과목 추가하기
+              </button>
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-6">
+            {subjects.map(subject => (
+              <SubjectCard
+                key={subject.id}
+                subject={subject}
+                dailyProgress={dailyProgress.get(subject.id) || 0}
+                userId={userId}
+                onArchive={handleArchive}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Quick Menu */}
+        <div className="bg-gradient-to-r from-[#faf5ff] to-[#eff6ff] rounded-[10px] p-6 mt-8">
+          <h2 className="text-[16px] text-neutral-950 mb-4">빠른 메뉴</h2>
+          <div className="flex flex-col gap-4">
+            <Link to={`/profile/${userId}`}>
+              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
+                📊 프로필 보기
+              </button>
+            </Link>
+            <Link to={`/reports/weekly/${userId}`}>
+              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
+                📈 주간 리포트
+              </button>
+            </Link>
+            <Link to={`/reports/daily/${userId}`}>
+              <button className="bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] w-full text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors">
+                📅 일간 리포트
+              </button>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* 일일 분배 다이얼로그 */}
+      <Dialog open={showAllocationDialog} onOpenChange={setShowAllocationDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>오늘의 학습 시간 분배</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <p className="text-[14px] text-[#6a7282]">
+              오늘 사용 가능한 총 학습 시간을 입력하면, 각 과목의 학점, 난이도, 과제 여부를 고려하여 자동으로 시간을 분배합니다.
+            </p>
+            
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[14px] text-neutral-950">
+                  오늘 사용 가능한 시간 (분)
+                </label>
+                <button
+                  onClick={handleGetRecommendation}
+                  disabled={recommending || subjects.length === 0}
+                  className="text-[12px] text-[#9810fa] hover:text-[#8610da] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  {recommending ? '추천 중...' : '오늘의 분배 추천'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="30"
+                  step="30"
+                  value={availableMinutes}
+                  onChange={(e) => setAvailableMinutes(parseInt(e.target.value) || 0)}
+                  className="flex-1 bg-[#f3f3f5] rounded-[8px] h-[40px] px-3 text-[16px] text-neutral-950 border-0 focus:outline-none focus:ring-2 focus:ring-[#9810fa]"
+                />
+                <span className="text-[14px] text-[#6a7282] whitespace-nowrap">
+                  ({Math.floor(availableMinutes / 60)}시간 {availableMinutes % 60}분)
+                </span>
+              </div>
+            </div>
+
+            {subjects.length > 0 && (
+              <div className="bg-purple-50 rounded-[8px] p-3">
+                <p className="text-[12px] text-[#6a7282] mb-2">분배 대상 과목:</p>
+                <div className="flex flex-wrap gap-2">
+                  {subjects.map(subject => (
+                    <span
+                      key={subject.id}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-[6px] text-[12px] text-white"
+                      style={{ backgroundColor: subject.color }}
+                    >
+                      {subject.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowAllocationDialog(false)}
+                className="flex-1 bg-white border border-[rgba(0,0,0,0.1)] rounded-[8px] h-[36px] text-[14px] text-neutral-950 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDailyAllocation}
+                disabled={allocating || subjects.length === 0}
+                className="flex-1 bg-[#9810fa] hover:bg-[#8610da] text-white rounded-[8px] h-[36px] text-[14px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                {allocating ? '분배 중...' : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    시간 분배
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
