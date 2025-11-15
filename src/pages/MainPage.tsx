@@ -169,6 +169,13 @@ export function MainPage({ userId }: MainPageProps) {
   const totalDailyTarget = subjects.filter(s => !s.archived).reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
   const dailyTargetHours = Math.floor(totalDailyTarget / 60);
   const dailyTargetMinutes = totalDailyTarget % 60;
+  
+  // 남은 시간 계산 (초 단위)
+  const targetSeconds = totalDailyTarget * 60;
+  const remainingTargetSeconds = Math.max(0, targetSeconds - totalSeconds);
+  const remainingHours = Math.floor(remainingTargetSeconds / 3600);
+  const remainingMins = Math.floor((remainingTargetSeconds % 3600) / 60);
+  const remainingSecs = remainingTargetSeconds % 60;
 
   if (loading) {
     return (
@@ -190,9 +197,14 @@ export function MainPage({ userId }: MainPageProps) {
                 오늘 학습 시간: {totalHours > 0 ? `${totalHours}시간 ` : ''}{remainingMinutes}분 {remainingSeconds}초
               </p>
               {totalDailyTarget > 0 && (
-                <p className="text-[14px] text-[#6a7282] mt-1">
-                  오늘 목표: {dailyTargetHours > 0 ? `${dailyTargetHours}시간 ` : ''}{dailyTargetMinutes}분
-                </p>
+                <>
+                  <p className="text-[14px] text-[#6a7282] mt-1">
+                    남은 시간: {remainingHours > 0 ? `${remainingHours}시간 ` : ''}{remainingMins}분{remainingSecs > 0 ? ` ${remainingSecs}초` : ''}
+                  </p>
+                  <p className="text-[14px] text-[#6a7282] mt-1">
+                    오늘 목표: {dailyTargetHours > 0 ? `${dailyTargetHours}시간 ` : ''}{dailyTargetMinutes}분
+                  </p>
+                </>
               )}
             </div>
             <div className="flex gap-2">

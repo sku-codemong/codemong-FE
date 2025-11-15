@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ArrowLeft, Calendar, Clock, TrendingUp, Award, CalendarDays } from 'lucide-react';
 import { api, WeeklyReport, Subject, Session } from '../services/api';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar as CalendarComponent } from '../components/ui/calendar';
+import { ko } from 'date-fns/locale';
 
 import { Toaster, toast } from "sonner";
 
@@ -219,7 +222,27 @@ export function WeeklyReportPage() {
                   <h1 className="text-[24px] text-neutral-950 mb-[8px]">주간 학습 리포트</h1>
                   <p className="text-[16px] text-[#4a5565]">{formatWeekRange()}</p>
                 </div>
-                <Calendar className="w-[32px] h-[32px] text-[#9810fa]" strokeWidth={2.67} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="cursor-pointer hover:opacity-70 transition-opacity">
+                      <Calendar className="w-[32px] h-[32px] text-[#9810fa]" strokeWidth={2.67} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-white border border-gray-200 shadow-lg" align="end">
+                    <CalendarComponent
+                      mode="single"
+                      selected={new Date(weekStart + 'T00:00:00')}
+                      onSelect={(date) => {
+                        if (date) {
+                          const selectedMonday = getMonday(date);
+                          setWeekStart(selectedMonday);
+                        }
+                      }}
+                      locale={ko}
+                      className="rounded-md border-0"
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Stats Grid */}
