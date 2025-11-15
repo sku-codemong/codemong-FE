@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ArrowLeft, Calendar, Clock, TrendingUp, Award, CalendarDays } from 'lucide-react';
-import { api, WeeklyReport, Subject } from '../services/api';
+import { api, WeeklyReport, Subject, Session } from '../services/api';
 
 import { Toaster, toast } from "sonner";
 
@@ -11,6 +11,7 @@ export function WeeklyReportPage() {
   const [weekStart, setWeekStart] = useState(getMonday(new Date()));
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -29,10 +30,36 @@ export function WeeklyReportPage() {
   const loadReport = async () => {
     setLoading(true);
     try {
-      const [reportData, subjectsData] = await Promise.all([
+      // 이번 주 월요일부터 오늘까지 각 날짜별로 세션 조회 (초 단위 계산용)
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const monday = new Date(weekStart);
+      monday.setHours(0, 0, 0, 0);
+      
+      const sessionPromises: Promise<Session[]>[] = [];
+      const currentDate = new Date(monday);
+      currentDate.setHours(0, 0, 0, 0);
+      
+      // 월요일부터 오늘까지 각 날짜별로 세션 조회
+      while (true) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        sessionPromises.push(
+          api.getSessions({ date: dateStr }).catch(() => [] as Session[])
+        );
+        
+        if (dateStr === todayStr) {
+          break;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      const [reportData, subjectsData, ...sessionsArrays] = await Promise.all([
         api.getWeeklyReport(weekStart),
-        api.getSubjects(false).catch(() => [] as Subject[])
+        api.getSubjects(false).catch(() => [] as Subject[]),
+        ...sessionPromises
       ]);
+      
+      const allSessions = sessionsArrays.flat();
       
       // 과목 정보를 사용하여 리포트의 과목 색상 매핑
       const reportWithColors = {
@@ -48,6 +75,7 @@ export function WeeklyReportPage() {
       
       setReport(reportWithColors);
       setSubjects(subjectsData);
+      setSessions(allSessions);
     } catch (error) {
       toast.error('리포트를 불러오는데 실패했습니다');
     } finally {
@@ -66,24 +94,59 @@ export function WeeklyReportPage() {
     return `${start.getFullYear()}년 ${start.getMonth() + 1}월 ${start.getDate()}일 - ${endDate.getMonth() + 1}월 ${endDate.getDate()}일`;
   };
 
-  // 주간 데이터가 없으면 7일치 빈 데이터 생성
-  const dailyChartData = report?.dailyBreakdown && report.dailyBreakdown.length > 0
-    ? report.dailyBreakdown.map(day => ({
-        date: new Date(day.date).toLocaleDateString('ko-KR', { weekday: 'short' }),
-        minutes: day.minutes || 0
-      }))
-    : (() => {
-        const start = new Date(report?.weekStart || weekStart);
-        const days = ['일', '월', '화', '수', '목', '금', '토'];
-        return Array.from({ length: 7 }, (_, i) => {
-          const date = new Date(start);
-          date.setDate(start.getDate() + i);
-          return {
-            date: days[date.getDay()],
-            minutes: 0
-          };
-        });
-      })();
+  // 일별 학습 시간 계산 (세션 데이터에서 직접 계산)
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  
+  // weekStart가 문자열이므로 안전하게 Date로 변환
+  const mondayDate = weekStart ? new Date(weekStart + 'T00:00:00') : new Date();
+  mondayDate.setHours(0, 0, 0, 0);
+  
+  const dailyChartData = Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(mondayDate);
+    date.setDate(mondayDate.getDate() + i);
+    date.setHours(0, 0, 0, 0);
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // 해당 날짜의 모든 세션 시간 계산 (초 단위)
+    const daySeconds = (sessions || [])
+      .filter(s => {
+        if (!s) return false;
+        if (s.status !== 'completed' && s.status !== 'stopped') return false;
+        try {
+          // 세션의 시작 날짜를 YYYY-MM-DD 형식으로 추출 (시간을 0으로 설정하여 정확한 날짜 비교)
+          const sessionStart = new Date(s.startTime);
+          sessionStart.setHours(0, 0, 0, 0);
+          const sessionDateStr = sessionStart.toISOString().split('T')[0];
+          return sessionDateStr === dateStr;
+        } catch {
+          return false;
+        }
+      })
+      .reduce((sum, s) => {
+        try {
+          let durationSec = 0;
+          if (s.endTime) {
+            const start = new Date(s.startTime).getTime();
+            const end = new Date(s.endTime).getTime();
+            durationSec = Math.floor((end - start) / 1000);
+          } else if (s.duration) {
+            // duration이 분 단위이므로 초로 변환
+            durationSec = s.duration * 60;
+          }
+          return sum + durationSec;
+        } catch {
+          return sum;
+        }
+      }, 0);
+    
+    // 분 단위로 변환 (차트에 표시)
+    const minutes = Math.floor(daySeconds / 60);
+    
+    return {
+      date: days[date.getDay()],
+      minutes: minutes || 0 // 최소 0 보장
+    };
+  });
 
   const pieChartData = report?.subjects.map(s => ({
     name: s.subjectName,
@@ -91,10 +154,45 @@ export function WeeklyReportPage() {
     color: s.color
   })) || [];
 
-  const avgDaily = report ? Math.round(report.totalMinutes / 7) : 0;
-  const totalTargetMinutes = report?.subjects.reduce((sum, s) => sum + s.targetMinutes, 0) || 1;
-  const achievementRate = report ? Math.round((report.totalMinutes / totalTargetMinutes) * 100) : 0;
-  const studyDays = report?.dailyBreakdown.filter(d => d.minutes > 0).length || 0;
+  // 총 학습 시간을 초 단위로 계산 (세션 데이터에서 직접 계산)
+  const totalSeconds = sessions
+    .filter(s => s.status === 'completed' || s.status === 'stopped')
+    .reduce((sum, s) => {
+      let durationSec = 0;
+      if (s.endTime) {
+        const start = new Date(s.startTime).getTime();
+        const end = new Date(s.endTime).getTime();
+        durationSec = Math.floor((end - start) / 1000);
+      } else {
+        durationSec = (s.duration || 0) * 60;
+      }
+      return sum + durationSec;
+    }, 0);
+  const totalHours = Math.floor(totalSeconds / 3600);
+  const totalMins = Math.floor((totalSeconds % 3600) / 60);
+  const totalSecs = totalSeconds % 60;
+  
+  // 일일 평균 계산 (초 단위로 정확하게 계산)
+  const avgDailySeconds = report ? Math.round(totalSeconds / 7) : 0;
+  const avgDailyHours = Math.floor(avgDailySeconds / 3600);
+  const avgDailyMins = Math.floor((avgDailySeconds % 3600) / 60);
+  const avgDailySecs = avgDailySeconds % 60;
+  
+  // 목표 달성률 계산: 그 주에 분배받은 총 시간 (각 과목의 targetDailyMin 합계)
+  // 보관되지 않은 과목들의 일일 목표 시간을 합산
+  const totalTargetMinutes = subjects
+    .filter(s => !s.archived) // 보관되지 않은 과목만
+    .reduce((sum, s) => sum + (s.targetDailyMin || 0), 0);
+  
+  const totalTargetSeconds = totalTargetMinutes * 60;
+  
+  // 목표 달성률 계산 (실제 학습 시간 / 목표 시간 * 100) - 소수점 한 자리까지
+  const achievementRate = totalTargetSeconds > 0 
+    ? ((totalSeconds / totalTargetSeconds) * 100).toFixed(1) 
+    : '0.0';
+  
+  // 학습일 계산 (세션 데이터에서 직접 계산)
+  const studyDays = dailyChartData.filter(d => d.minutes > 0).length;
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
@@ -132,7 +230,7 @@ export function WeeklyReportPage() {
                     <span className="text-[16px] text-[#4a5565]">총 학습 시간</span>
                   </div>
                   <p className="text-[16px] text-neutral-950">
-                    {Math.floor(report.totalMinutes / 60)}시간 {report.totalMinutes % 60}분
+                    {totalHours > 0 ? `${totalHours}시간 ` : ''}{totalMins}분 {totalSecs}초
                   </p>
                 </div>
 
@@ -142,7 +240,7 @@ export function WeeklyReportPage() {
                     <span className="text-[16px] text-[#4a5565]">일일 평균</span>
                   </div>
                   <p className="text-[16px] text-neutral-950">
-                    {Math.floor(avgDaily / 60)}시간 {avgDaily % 60}분
+                    {avgDailyHours > 0 ? `${avgDailyHours}시간 ` : ''}{avgDailyMins}분 {avgDailySecs}초
                   </p>
                 </div>
 
@@ -211,8 +309,27 @@ export function WeeklyReportPage() {
                 {/* Subject List */}
                 <div className="flex flex-col gap-[16px]">
                   {report.subjects.map((subject, index) => {
-                    const hours = Math.floor(subject.minutes / 60);
-                    const mins = subject.minutes % 60;
+                    // 세션 데이터에서 정확한 초 단위 계산
+                    const subjectSeconds = sessions
+                      .filter(s => 
+                        String(s.subjectId) === String(subject.subjectId) &&
+                        (s.status === 'completed' || s.status === 'stopped')
+                      )
+                      .reduce((sum, s) => {
+                        let durationSec = 0;
+                        if (s.endTime) {
+                          const start = new Date(s.startTime).getTime();
+                          const end = new Date(s.endTime).getTime();
+                          durationSec = Math.floor((end - start) / 1000);
+                        } else {
+                          durationSec = (s.duration || 0) * 60;
+                        }
+                        return sum + durationSec;
+                      }, 0);
+                    
+                    const hours = Math.floor(subjectSeconds / 3600);
+                    const mins = Math.floor((subjectSeconds % 3600) / 60);
+                    const secs = subjectSeconds % 60;
                     
                     return (
                       <div key={index} className="bg-gray-50 rounded-[14px] p-[16px] flex items-center justify-between">
@@ -224,8 +341,9 @@ export function WeeklyReportPage() {
                           <span className="text-[16px] text-neutral-950">{subject.subjectName}</span>
                         </div>
                         <div className="text-right">
-                          <p className="text-[16px] text-neutral-950">{subject.minutes}분</p>
-                          <p className="text-[16px] text-[#6a7282]">{hours}시간 {mins}분</p>
+                          <p className="text-[16px] text-neutral-950">
+                            {hours > 0 ? `${hours}시간 ` : ''}{mins}분 {secs}초
+                          </p>
                         </div>
                       </div>
                     );

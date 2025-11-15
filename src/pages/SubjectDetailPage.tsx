@@ -22,6 +22,21 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 
+// hex 색상을 받아서 더 밝은 버전을 반환하는 함수
+const lightenColorHex = (hex: string, percent: number): string => {
+  // # 제거
+  const num = parseInt(hex.replace('#', ''), 16);
+  
+  // RGB 분리
+  const r = (num >> 16) + Math.round(2.55 * percent * (255 - (num >> 16)));
+  const g = (num >> 8 & 0x00FF) + Math.round(2.55 * percent * (255 - (num >> 8 & 0x00FF)));
+  const b = (num & 0x0000FF) + Math.round(2.55 * percent * (255 - (num & 0x0000FF)));
+  
+  // hex로 변환
+  return '#' + (0x1000000 + (r < 255 ? r : 255) * 0x10000 + 
+    (g < 255 ? g : 255) * 0x100 + (b < 255 ? b : 255)).toString(16).slice(1);
+};
+
 export function SubjectDetailPage() {
   const { userId, subjectId } = useParams();
   const navigate = useNavigate();
@@ -74,16 +89,36 @@ export function SubjectDetailPage() {
         return;
       }
 
-      // 백엔드가 date 파라미터를 요구하므로 오늘 날짜 전달
-      // 전체 세션을 조회하려면 넓은 범위의 날짜가 필요하지만, 
-      // 백엔드가 특정 날짜만 받으므로 일단 오늘 날짜로 조회
-      const today = new Date().toISOString().split('T')[0];
-      const sessions = await api
-        .getSessions({ subjectId, date: today })
-        .catch((error) => {
-          console.warn('세션 데이터를 불러오지 못했습니다:', error);
-          return [] as Session[];
-        });
+      // 이번 주 월요일부터 오늘까지 각 날짜별로 세션 조회 (메인 화면과 동일)
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      // 이번 주 월요일 계산
+      const weekStartDate = new Date();
+      const day = weekStartDate.getDay();
+      const diff = weekStartDate.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(weekStartDate.setDate(diff));
+      monday.setHours(0, 0, 0, 0);
+      
+      const sessionPromises: Promise<Session[]>[] = [];
+      const currentDate = new Date(monday);
+      currentDate.setHours(0, 0, 0, 0);
+      
+      // 월요일부터 오늘까지 각 날짜별로 세션 조회
+      while (true) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        sessionPromises.push(
+          api.getSessions({ subjectId, date: dateStr }).catch(() => [] as Session[])
+        );
+        
+        if (dateStr === todayStr) {
+          break;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      const sessionsArrays = await Promise.all(sessionPromises);
+      const sessions = sessionsArrays.flat();
 
       const numericSubjectId = Number(subjectId);
       const subjectIdForTask =
@@ -104,7 +139,8 @@ export function SubjectDetailPage() {
         hasExtraWork: tasks.length > 0,
       });
 
-      setRecentSessions(sessions.slice(-5).reverse());
+      // 모든 세션 저장 (최근 5개만이 아닌)
+      setRecentSessions(sessions);
 
       // 활성 세션 확인
       const active = api.getActiveSession();
@@ -258,9 +294,23 @@ export function SubjectDetailPage() {
     if (!activeSession) return;
 
     try {
+      // 세션 종료
       const completedSession = await api.stopSession(activeSession.id);
+      
+      // 노트가 있으면 저장
+      if (note.trim()) {
+        try {
+          await api.updateSessionNote(activeSession.id, note.trim());
+        } catch (noteError) {
+          console.error('노트 저장 실패:', noteError);
+          // 노트 저장 실패는 경고만 하고 전체 프로세스는 계속 진행
+          toast.error('노트 저장에 실패했습니다');
+        }
+      }
+      
       setActiveSession(null);
       setElapsedSeconds(0);
+      setNote(''); // 노트 초기화
       setRecentSessions([completedSession, ...recentSessions.slice(0, 4)]);
       toast.success(`학습 완료! (${completedSession.duration}분)`);
     } catch (error) {
@@ -297,22 +347,67 @@ export function SubjectDetailPage() {
         String(s.subjectId) === String(subjectId)
       );
       
-      const todayMinutes = filteredSessions
+      // 메인 화면과 동일한 계산 방식: 초 단위로 합산한 후 분으로 변환
+      // normalizeSession에서 'stopped'는 'completed'로 변환되므로 'completed'만 체크
+      const todayTotalSeconds = filteredSessions
         .filter(s => {
-          const sessionDate = new Date(s.startTime).toDateString();
-          const today = new Date().toDateString();
-          return sessionDate === today;
+          // 완료된 세션만 포함 (메인 화면과 동일)
+          // normalizeSession에서 'stopped'가 'completed'로 변환되므로 'completed'만 체크
+          if (s.status !== 'completed') {
+            return false;
+          }
+          // 세션의 시작 시간을 YYYY-MM-DD 형식으로 변환
+          const sessionDateStr = new Date(s.startTime).toISOString().split('T')[0];
+          const todayStr = new Date().toISOString().split('T')[0];
+          return sessionDateStr === todayStr;
         })
-        .reduce((sum, s) => sum + s.duration, 0);
+        .reduce((sum, s) => {
+          // endTime과 startTime의 차이를 초 단위로 계산 (메인 화면과 동일)
+          let durationSec = 0;
+          if (s.endTime) {
+            const start = new Date(s.startTime).getTime();
+            const end = new Date(s.endTime).getTime();
+            durationSec = Math.floor((end - start) / 1000);
+          } else {
+            // endTime이 없으면 duration을 초로 변환 (이미 분 단위이므로 * 60)
+            durationSec = (s.duration || 0) * 60;
+          }
+          return sum + durationSec;
+        }, 0);
+      const todayMinutes = Math.floor(todayTotalSeconds / 60);
+      const todaySeconds = todayTotalSeconds % 60;
 
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const weekMinutes = filteredSessions
-        .filter(s => new Date(s.startTime) >= weekStart)
-        .reduce((sum, s) => sum + s.duration, 0);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekTotalSeconds = filteredSessions
+        .filter(s => {
+          // 완료된 세션만 포함 (메인 화면과 동일)
+          // normalizeSession에서 'stopped'가 'completed'로 변환되므로 'completed'만 체크
+          if (s.status !== 'completed') {
+            return false;
+          }
+          return new Date(s.startTime) >= weekStart;
+        })
+        .reduce((sum, s) => {
+          // endTime과 startTime의 차이를 초 단위로 계산 (메인 화면과 동일)
+          let durationSec = 0;
+          if (s.endTime) {
+            const start = new Date(s.startTime).getTime();
+            const end = new Date(s.endTime).getTime();
+            durationSec = Math.floor((end - start) / 1000);
+          } else {
+            // endTime이 없으면 duration을 초로 변환
+            durationSec = (s.duration || 0) * 60;
+          }
+          return sum + durationSec;
+        }, 0);
+      const weekMinutes = Math.floor(weekTotalSeconds / 60);
+      const weekSeconds = weekTotalSeconds % 60;
 
   // 일일 목표까지 남은 시간 계산 (일일 분배로 설정된 targetDailyMin 사용)
-  const remaining = Math.max(0, (subject.targetDailyMin || 0) - todayMinutes);
+  const remainingMinutes = Math.max(0, (subject.targetDailyMin || 0) - todayMinutes);
+  const remaining = remainingMinutes; // 기존 코드 호환성
 
   return (
     <>
@@ -332,7 +427,10 @@ export function SubjectDetailPage() {
           {/* Header with Icon */}
           <div className="flex flex-col items-center mb-[48px]">
             <div 
-              className="w-[96px] h-[96px] rounded-full flex items-center justify-center mb-[16px] bg-gradient-to-br from-[#2b7fff] to-[#9810fa]"
+              className="w-[96px] h-[96px] rounded-full flex items-center justify-center mb-[16px]"
+              style={{
+                background: `linear-gradient(to bottom right, ${lightenColorHex(subject.color, 30)}, ${subject.color})`
+              }}
             >
               <Clock className="w-[48px] h-[48px] text-white" strokeWidth={2.67} />
             </div>
@@ -342,7 +440,12 @@ export function SubjectDetailPage() {
 
           {/* Timer Section */}
           <div className="flex flex-col items-center mb-[48px]">
-            <div className="w-full bg-gradient-to-br from-[#e9d5ff] via-[#ddd6fe] to-[#e0e7ff] rounded-[24px] px-[48px] py-[32px] mb-[16px]">
+            <div 
+              className="w-full rounded-[24px] px-[48px] py-[32px] mb-[16px]"
+              style={{
+                background: `linear-gradient(to bottom right, ${lightenColorHex(subject.color, 40)}, ${lightenColorHex(subject.color, 20)})`
+              }}
+            >
               <p className="text-[96px] leading-[96px] text-center text-neutral-950 tracking-tight">
                 {formatTime(elapsedSeconds)}
               </p>
@@ -355,7 +458,10 @@ export function SubjectDetailPage() {
             {!activeSession && (
               <button
                 onClick={handleStart}
-                className="bg-[#9810fa] hover:bg-[#8610da] text-white rounded-[8px] h-[40px] px-[16px] flex items-center gap-[12px] transition-colors"
+                style={{
+                  backgroundColor: subject.color,
+                }}
+                className="hover:opacity-90 text-white rounded-[8px] h-[40px] px-[16px] flex items-center gap-[12px] transition-opacity"
               >
                 <Play className="w-[20px] h-[20px]" strokeWidth={1.67} fill="white" />
                 <span className="text-[14px]">시작</span>
@@ -461,13 +567,13 @@ export function SubjectDetailPage() {
             <div className="bg-purple-50 rounded-[14px] p-[16px]">
               <p className="text-[16px] text-[#6a7282] text-center mb-[4px]">오늘 학습 시간</p>
               <p className="text-[16px] text-neutral-950 text-center">
-                {Math.floor(todayMinutes / 60)}시간 {todayMinutes % 60}분
+                {Math.floor(todayMinutes / 60) > 0 ? `${Math.floor(todayMinutes / 60)}시간 ` : ''}{todayMinutes % 60}분 {todaySeconds}초
               </p>
             </div>
             <div className="bg-blue-50 rounded-[14px] p-[16px]">
               <p className="text-[16px] text-[#6a7282] text-center mb-[4px]">이번 주 누적</p>
               <p className="text-[16px] text-neutral-950 text-center">
-                {Math.floor(weekMinutes / 60)}시간 {weekMinutes % 60}분
+                {Math.floor(weekMinutes / 60) > 0 ? `${Math.floor(weekMinutes / 60)}시간 ` : ''}{weekMinutes % 60}분 {weekSeconds}초
               </p>
             </div>
             <div className="bg-emerald-50 rounded-[14px] p-[16px]">

@@ -60,6 +60,7 @@ export interface Session {
   endTime?: string;
   duration: number; // minutes
   status: 'active' | 'completed' | 'manual';
+  note?: string | null;
 }
 
 function normalizeSession(data: any): Session {
@@ -85,6 +86,7 @@ function normalizeSession(data: any): Session {
     endTime: endAt ? new Date(endAt).toISOString() : undefined,
     duration: durationMin,
     status: status as 'active' | 'completed' | 'manual',
+    note: data.note ?? null,
   };
 }
 
@@ -1117,6 +1119,15 @@ const mockApi = {
     return session;
   },
 
+  // 세션 노트 업데이트
+  updateSessionNote: async (sessionId: string, note: string): Promise<void> => {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const session = mockSessions.find(s => s.id === sessionId);
+    if (!session) throw new Error('Session not found');
+    // Mock에서는 노트 업데이트 로직이 필요없지만 일관성을 위해 함수 제공
+    console.log(`Updating note for session ${sessionId}: ${note}`);
+  },
+
   createManualSession: async (data: {
     subjectId: string;
     startTime: string;
@@ -1584,6 +1595,14 @@ const realApi = {
       body: JSON.stringify({ session_id: Number(sessionId) }),
     });
     return normalizeSession(payload.session || payload);
+  },
+
+  // 세션 노트 업데이트
+  updateSessionNote: async (sessionId: string, note: string): Promise<void> => {
+    await apiRequest(`/api/sessions/${sessionId}/note`, {
+      method: 'PATCH',
+      body: JSON.stringify({ note }),
+    });
   },
 
   // ========== 과제 관련 API ==========

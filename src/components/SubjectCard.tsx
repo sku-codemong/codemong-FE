@@ -4,14 +4,21 @@ import { Link } from 'react-router-dom';
 
 interface SubjectCardProps {
   subject: Subject;
-  dailyProgress?: number;
+  dailyProgress?: number; // 분 단위 (하위 호환성 유지)
+  dailyProgressSeconds?: number; // 초 단위
   userId: string;
   onArchive?: (id: string) => void;
 }
 
-export function SubjectCard({ subject, dailyProgress = 0, userId, onArchive }: SubjectCardProps) {
+export function SubjectCard({ subject, dailyProgress = 0, dailyProgressSeconds, userId, onArchive }: SubjectCardProps) {
   const targetDaily = subject.targetDailyMin || 0;
-  const progressPercentage = targetDaily > 0 ? (dailyProgress / targetDaily) * 100 : 0;
+  
+  // 초 단위 데이터가 있으면 사용, 없으면 분 단위로 변환
+  const progressSeconds = dailyProgressSeconds !== undefined ? dailyProgressSeconds : (dailyProgress * 60);
+  const progressMinutes = Math.floor(progressSeconds / 60);
+  const progressSecs = progressSeconds % 60;
+  
+  const progressPercentage = targetDaily > 0 ? (progressMinutes / targetDaily) * 100 : 0;
   
   return (
     <div className="bg-white rounded-[14px] border border-[rgba(0,0,0,0.1)] p-6">
@@ -68,9 +75,13 @@ export function SubjectCard({ subject, dailyProgress = 0, userId, onArchive }: S
               {targetDaily > 0 ? '오늘 학습 목표' : '학습 시간'}
             </span>
             {targetDaily > 0 ? (
-              <span className="text-[#4a5565]">{dailyProgress}분 / {targetDaily}분</span>
+              <span className="text-[#4a5565]">
+                {progressMinutes}분 {progressSecs > 0 ? `${progressSecs}초` : ''} / {targetDaily}분
+              </span>
             ) : (
-              <span className="text-[#4a5565]">{dailyProgress}분</span>
+              <span className="text-[#4a5565]">
+                {progressMinutes}분 {progressSecs > 0 ? `${progressSecs}초` : ''}
+              </span>
             )}
           </div>
           
@@ -86,7 +97,7 @@ export function SubjectCard({ subject, dailyProgress = 0, userId, onArchive }: S
             </div>
           )}
           
-          <Link to={`/subject/${userId}/${subject.id}`}>
+          <Link to={`/subject/${userId}/${subject.id}`} className="block mt-6">
             <button 
               className="w-full h-[36px] rounded-[8px] text-white text-[14px] flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
               style={{ backgroundColor: subject.color }}
